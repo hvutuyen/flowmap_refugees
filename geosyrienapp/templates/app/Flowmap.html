@@ -1,0 +1,2692 @@
+<!DOCTYPE html>
+<html>
+{% load static %}
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+    <meta name="description" content="Canvas Flowmap Layer with LeafletJS." />
+
+    <title>Map of Migration flow</title>
+
+    <!-- <link rel="stylesheet" href="https://unpkg.com/leaflet@1.3/dist/leaflet.css" /> -->
+    <link rel="stylesheet" href="{% static '/flowmapStatics/leaflet.css' %}" />
+    <link rel="stylesheet" href="{% static '/flowmapStatics/flowmap.css' %}" />
+
+    <link rel="stylesheet" href="{% static '/flowmapStatics/L.Control.Sidebar.css' %}" />
+
+</head>
+
+<body>
+    <div id="sidebar-left">
+	<b><span style="font-size:20px">Information*</span></b>
+	<p><span style="font-size:12px">*Quelle: EUROSTAT </span></p>
+        <br>
+
+        <b>Land:</b>
+        <div class="landCont"></div>
+        <br>
+        <b>Gesamtbevölkerung:</b>
+        <div class="populationCont"></div>
+        <br>
+        <b>Registrierte Gesamtzahl der Flüchtlinge:</b>
+        <div class="refTotalCont"></div>
+        <br>
+        <b>Männlich:</b>
+        <div class="maleCont"></div>
+        <br>
+        <b>Weiblich:</b>
+        <div class="femaleCont"></div>
+        <br>
+        <b>Kinder unter 18:</b>
+        <div class="childrenCont"></div>
+        <br>
+        <b>Erwachsene unter 34:</b>
+        <div class="adult34Cont"></div>
+        <br>
+        <b>Erwachsene unter 64:</b>
+        <div class="adult64Cont"></div>
+        <br>
+        <b>Erwachsene über 65:</b>
+        <div class="rentnerCont"></div>
+        <br>
+        <b>Unbekannt:</b>
+        <div class="unbekanntCont"></div>
+        <br>
+        <b>Erstanträge gesamt:</b>
+        <div class="erstantragCont"></div>
+        <br>
+        <b>Folgeanträge gesamt:</b>
+        <div class="folgeantragCont"></div>
+        <br>
+        <b>Politische Haltung:</b>
+        <div class="politischeHaltung"></div>
+    </div>
+
+
+    <div id="map"></div>
+
+    <!-- first load LeafletJS -->
+    <!-- <script src="https://unpkg.com/leaflet@1.3/dist/leaflet.js"></script> -->
+    <script src="{% static '/flowmapStatics/leaflet.js' %}"></script>
+
+    <!-- load Esri Leaflet because we want to use an Esri basemap -->
+    <!-- <script src="https://unpkg.com/esri-leaflet@2.1/dist/esri-leaflet.js"></script> -->
+    <script src="{% static '/flowmapStatics/esri.js' %}"></script>
+    <script src="{% static '/flowmapStatics/map.js' %}"></script>
+    <!-- <script src="{% static '/flowmapStatics/leaflet-esri.js' %}"></script> -->
+
+
+    <!-- load animation tweening lib requirement for CanvasFlowMapLayer -->
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/17.2.0/Tween.min.js"></script> -->
+    <script src="{% static '/flowmapStatics/tween.js' %}"></script>
+
+    <!-- then load CanvasFlowMapLayer -->
+    <script src="{% static '/flowmapStatics/CanvasFlowmapLayer.js' %}"></script>
+
+    <!-- also load 3rd-party CSV parsing libary just for this demo  -->
+    <!-- <script src="https://unpkg.com/papaparse@4.3/papaparse.min.js"></script> -->
+    <script src="{% static '/flowmapStatics/papaparse.js' %}"></script>
+
+    <script src="{% static '/flowmapStatics/jquery-3.3.1.min.js' %}"></script>
+
+    <script src="{% static '/flowmapStatics/Chart.js'%}"></script>
+    <script src="{% static '/flowmapStatics/leaflet.ajax.min.js'%}"></script>
+    <script src="{% static '/flowmapStatics/L.Control.Sidebar.js'%}"></script>
+    <script src="{% static '/flowmapStatics/leaflet-button.js'%}"></script>
+
+
+    <script>
+
+
+        // Karte laden
+        var map = L.map('map');
+
+        if (L.Browser.mobile) {
+            map.setView([15, -21.95], 2);
+        } else {
+            map.setView([54.54, 25.19],3);
+        }
+
+        // Layer erstellen und zur Karte hinzufuegen
+        L.esri.basemapLayer('DarkGray').addTo(map);
+        //L.tileLayer.provider('Stadia.AlidadeSmoothDark').addTo(map);
+
+        // Sidebar erstellen
+
+        var leftSidebar = L.control.sidebar('sidebar-left', {
+            closeButton: true,
+            position: 'left'
+        });
+        map.addControl(leftSidebar);
+
+
+
+        // Radiusskalierung berechnen
+
+        //function calcRadius(refTotal){
+        //    var scaleFactor = 0.002;
+        //    var area = refTotal * scaleFactor;
+        //    return Math.sqrt(area/Math.PI)*2;
+        //};
+
+        function getRadius(d) {
+            return  d >= 1000000 ? 18 :
+                    d >= 500000 ? 16 :
+                    d >= 100000 ? 14 :
+                    d >= 10000 ? 12 :
+                    d >= 5000 ? 10 :
+                    d >= 2500 ? 8 :
+                    d >= 1000 ? 6 :
+                    d >= 500 ? 4 :
+                    d >= 1 ? 2 :
+                    d = 0 ? 0:
+                    d = 'noData' ? 0 :
+                            0 ;
+
+        }
+
+        function getColor(f){
+                //Farbschema 2
+                return  f > 1000000 ? '#7f0000' :
+                        f > 500000 ? '#b30000' :
+                        f > 100000 ? '#d7301f' :
+                        f > 10000 ? '#ef6548' :
+                        f > 5000 ? '#fc8d59' :
+                        f > 2500 ? '#fdbb84' :
+                        f > 1000 ? '#fdd49e' :
+                        f > 500 ? '#fee8c8' :
+                        f >= 1 ? '#fff7ec' :
+                        f = 0 ? '#00000000':
+                        f = 'noData' ? '#00000000' :
+                                '#00000000' ;
+            }
+
+        var baseLayers = {};
+
+            xhttp = new XMLHttpRequest();
+            xhttp.onreadystatechange = function() {
+                if (this.readyState == 4 && this.status == 200) {
+                var response = this.responseText;
+                // var gjson = JSON.parse(response);
+            var geojson = JSON.parse(response);
+                // Attribute erweitern sodass sie mit dem Beispiel uebereinstimmen
+                geojson.features.forEach(e => {
+                    e.properties.origin_id = 39;
+                    e.properties.origin_lat = 35.023;
+                    e.properties.origin_lon = 38.5046;
+                    e.properties.dest_id = e.id;
+                    e.properties.dest_lat = e.geometry.coordinates[1];
+                    e.properties.dest_lon = e.geometry.coordinates[0];
+                });
+                    createFlowmap(geojson);
+            }
+
+        }
+
+        // xhttp.open("GET", "{% url 'dataset_2011'%}".replace(/\d{4}/,year), true);
+        xhttp.open("GET", "{% url 'dataset_2011'%}", true);
+        xhttp.send();
+        // };
+
+
+        // Flowmap erstellen und die geladenen JSONs als Input
+        function createFlowmap(geojson) {
+            var oneToManyFlowmapLayer = L.canvasFlowmapLayer(geojson, {
+                        originAndDestinationFieldIds: {
+                            originUniqueIdField: "origin_id",
+                            originGeometry: {
+                                x: "origin_lon",
+                                y: "origin_lat"
+                            },
+                            destinationUniqueIdField: "dest_id",
+                            destinationGeometry: {
+                                x: "dest_lon",
+                                y: "dest_lat"
+                            }
+                        },
+
+                        style: function(geojson) {
+                          if (geojson.properties.isOrigin) {
+                            return {
+                              renderer: oneToManyFlowmapLayer, // recommended to use your own L.canvas()
+                              radius: 5,
+                              weight: 1,
+                              color: 'rgb(195, 255, 62)',
+                              fillColor: 'rgba(195, 255, 62, 0.6)',
+                              fillOpacity: 0.6
+                            };
+                          } else {
+                            return {
+                              renderer: oneToManyFlowmapLayer,
+                              radius: getRadius(geojson.properties.refTotal),
+                              //radius: calcRadius(geojson.properties.refTotal),
+                              weight: 0.25,
+                              color: getColor(geojson.properties.refTotal),
+                              fillColor: getColor(geojson.properties.refTotal),
+                              fillOpacity: 0.7
+                            };
+                          }
+                        },
+                        // Klassifierungsparameter
+                        canvasBezierStyle: {
+                            type: 'classBreaks',
+                            field: 'refTotal',
+                            classBreakInfos: [{
+                                        classMinValue: 1,
+                                        classMaxValue: 499,
+                                        symbol: {
+                                            strokeStyle: '#fff7ec',
+                                            lineWidth: 0.2,
+                                            lineCap: 'round',
+                                            shadowColor: '#fff7ec',
+                                            shadowBlur: 0.2
+                                        }
+                                    }, {
+                                        classMinValue: 500,
+                                        classMaxValue: 999,
+                                        symbol: {
+                                            strokeStyle: '#fee8c8',
+                                            lineWidth: 0.4,
+                                            lineCap: 'round',
+                                            shadowColor: '#fee8c8',
+                                            shadowBlur: 0.4
+                                        }
+                                    }, {
+                                        classMinValue: 1000,
+                                        classMaxValue: 2499,
+                                        symbol: {
+                                            strokeStyle: '#fdd49e',
+                                            lineWidth: 0.6,
+                                            lineCap: 'round',
+                                            shadowColor: '#fdd49e',
+                                            shadowBlur: 0.6
+                                        },
+                                    },{
+                                        classMinValue: 2500,
+                                        classMaxValue: 4999,
+                                        symbol: {
+                                            strokeStyle: '#fdbb84',
+                                            lineWidth: 0.8,
+                                            lineCap: 'round',
+                                            shadowColor: '#fdbb84',
+                                            shadowBlur: 0.8
+                                            },
+                                    },{
+                                        classMinValue: 5000,
+                                        classMaxValue: 9999,
+                                        symbol: {
+                                            strokeStyle: '#fc8d59',
+                                            lineWidth: 1.0,
+                                            lineCap: 'round',
+                                            shadowColor: '#fc8d59',
+                                            shadowBlur: 1.0
+                                            },
+                                    },{
+                                        classMinValue: 10000,
+                                        classMaxValue: 99999,
+                                        symbol: {
+                                            strokeStyle: '#ef6548',
+                                            lineWidth: 2.2,
+                                            lineCap: 'round',
+                                            shadowColor: '#ef6548',
+                                            shadowBlur: 2.2
+                                            },
+                                    },{
+                                        classMinValue: 100000,
+                                        classMaxValue: 499999,
+                                        symbol: {
+                                            strokeStyle: '#d7301f',
+                                            lineWidth: 2.4,
+                                            lineCap: 'round',
+                                            shadowColor: '#d7301f',
+                                            shadowBlur: 2.4
+                                            },
+                                    },{
+                                        classMinValue: 500000,
+                                        classMaxValue: 999999,
+                                        symbol: {
+                                            strokeStyle: '#b30000',
+                                            lineWidth: 2.6,
+                                            lineCap: 'round',
+                                            shadowColor: '#b30000',
+                                            shadowBlur: 2.6
+                                            },
+                                    },{
+                                        classMinValue: 1000000,
+                                        classMaxValue: 3000000,
+                                        symbol: {
+                                            strokeStyle: '#7f0000',
+                                            lineWidth: 2.8,
+                                            lineCap: 'round',
+                                            shadowColor: '#7f0000',
+                                            shadowBlur: 2.8
+                                            },
+                                    },
+                                    ],
+                                    defaultSymbol: {
+                                    strokeStyle: '#00000000',
+                                        lineWidth: 0,
+                                        lineCap: 'round',
+                                        shadowColor: '#00000000',
+                                        shadowBlur: 0
+                                        },
+                                    },
+                        pathDisplayMode: 'selection',
+                        // animationStarted: true,
+                        // animationEasingFamily: 'Cubic',
+                        // animationEasingType: 'In',
+                        // animationDuration: 2000,
+
+                        pointToLayer: function(feature, latlng) {
+                            return L.circleMarker(latlng, {
+                                fillcolor: 'teal',
+                                color: '#597898',
+                                weight: 1,
+                                fillOpacity: 0.5,
+                            }).on({
+                                click: function(e){
+                                    leftSidebar.toggle();
+                                }
+                            });
+                        },
+                        onEachFeature: function(feature, layer){
+                            // Sidebar mit Daten füllen (jquery)
+                            layer.on('click', function(e) {
+                                $('.landCont').html(feature.properties.land);
+                                $('.populationCont').html(feature.properties.pop);
+                                $('.refTotalCont').html(feature.properties.refTotal);
+                                $('.maleCont').html(feature.properties.male);
+                                $('.femaleCont').html(feature.properties.female);
+                                $('.childrenCont').html(feature.properties.u18);
+                                $('.adult34Cont').html(feature.properties.u34);
+                                $('.adult64Cont').html(feature.properties.u64);
+                                $('.rentnerCont').html(feature.properties.ue65);
+                                $('.unknownCont').html(feature.properties.unknown);
+                                $('.erstantragCont').html(feature.properties.erstantrag);
+                                $('.folgeantragCont').html(feature.properties.folgeantrag);
+                                $('.politischeHaltung').html(feature.properties.haltung);
+
+
+                            });
+                        }
+
+                    });
+                    baseLayers["2011"] = oneToManyFlowmapLayer;
+                            // immediately select an origin point for Bezier path display,
+                            // instead of waiting for the first user click event to fire
+                            oneToManyFlowmapLayer.selectFeaturesForPathDisplayById("origin_id", 39, true, 'SELECTION_NEW');
+
+        };
+
+        xhttp1 = new XMLHttpRequest();
+        xhttp1.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+            var response = this.responseText;
+            // var gjson = JSON.parse(response);
+        var geojson = JSON.parse(response);
+            // Attribute erweitern sodass sie mit dem Beispiel uebereinstimmen
+            geojson.features.forEach(e => {
+                e.properties.origin_id = 39;
+                e.properties.origin_lat = 35.023;
+                e.properties.origin_lon = 38.5046;
+                e.properties.dest_id = e.id;
+                e.properties.dest_lat = e.geometry.coordinates[1];
+                e.properties.dest_lon = e.geometry.coordinates[0];
+            });
+                createFlowmap1(geojson);
+
+        }
+
+        }
+
+        // xhttp.open("GET", "{% url 'dataset_2011'%}".replace(/\d{4}/,year), true);
+        xhttp1.open("GET", "{% url 'dataset_2012'%}", true);
+        xhttp1.send();
+        // };
+
+
+        // Flowmap erstellen und die geladenen JSONs als Input
+        function createFlowmap1(geojson) {
+        var oneToManyFlowmapLayer1 = L.canvasFlowmapLayer(geojson, {
+                    originAndDestinationFieldIds: {
+                        originUniqueIdField: "origin_id",
+                        originGeometry: {
+                            x: "origin_lon",
+                            y: "origin_lat"
+                        },
+                        destinationUniqueIdField: "dest_id",
+                        destinationGeometry: {
+                            x: "dest_lon",
+                            y: "dest_lat"
+                        }
+                    },
+                    style: function(geojson) {
+                      if (geojson.properties.isOrigin) {
+                        return {
+                          renderer: oneToManyFlowmapLayer1, // recommended to use your own L.canvas()
+                          radius: 5,
+                          weight: 1,
+                          color: 'rgb(195, 255, 62)',
+                          fillColor: 'rgba(195, 255, 62, 0.6)',
+                          fillOpacity: 0.6
+                        };
+                      } else {
+                        return {
+                          renderer: oneToManyFlowmapLayer1,
+                          radius: getRadius(geojson.properties.refTotal),
+                          weight: 0.25,
+                          color: getColor(geojson.properties.refTotal),
+                          fillColor: getColor(geojson.properties.refTotal),
+                          fillOpacity: 0.7
+                        };
+                      }
+                    },
+                    // Klassifierungsparameter
+                    canvasBezierStyle: {
+                        type: 'classBreaks',
+                        field: 'refTotal',
+                        classBreakInfos: [{
+                                    classMinValue: 1,
+                                    classMaxValue: 499,
+                                    symbol: {
+                                        strokeStyle: '#F7F4F9',
+                                        lineWidth: 0.2,
+                                        lineCap: 'round',
+                                        shadowColor: '#F7F4F9',
+                                        shadowBlur: 0.2
+                                    }
+                                }, {
+                                    classMinValue: 500,
+                                    classMaxValue: 999,
+                                    symbol: {
+                                        strokeStyle: '#E7E1EF',
+                                        lineWidth: 0.4,
+                                        lineCap: 'round',
+                                        shadowColor: '#E7E1EF',
+                                        shadowBlur: 0.4
+                                    }
+                                }, {
+                                    classMinValue: 1000,
+                                    classMaxValue: 2499,
+                                    symbol: {
+                                        strokeStyle: '#fdd49e',
+                                        lineWidth: 0.6,
+                                        lineCap: 'round',
+                                        shadowColor: '#fdd49e',
+                                        shadowBlur: 0.6
+                                    },
+                                },{
+                                    classMinValue: 2500,
+                                    classMaxValue: 4999,
+                                    symbol: {
+                                        strokeStyle: '#fdbb84',
+                                        lineWidth: 0.8,
+                                        lineCap: 'round',
+                                        shadowColor: '#fdbb84',
+                                        shadowBlur: 0.8
+                                        },
+                                },{
+                                    classMinValue: 5000,
+                                    classMaxValue: 9999,
+                                    symbol: {
+                                        strokeStyle: '#fc8d59',
+                                        lineWidth: 1.0,
+                                        lineCap: 'round',
+                                        shadowColor: '#fc8d59',
+                                        shadowBlur: 1.0
+                                        },
+                                },{
+                                    classMinValue: 10000,
+                                    classMaxValue: 99999,
+                                    symbol: {
+                                        strokeStyle: '#ef6548',
+                                        lineWidth: 2.2,
+                                        lineCap: 'round',
+                                        shadowColor: '#ef6548',
+                                        shadowBlur: 2.2
+                                        },
+                                },{
+                                    classMinValue: 100000,
+                                    classMaxValue: 499999,
+                                    symbol: {
+                                        strokeStyle: '#d7301f',
+                                        lineWidth: 2.4,
+                                        lineCap: 'round',
+                                        shadowColor: '#d7301f',
+                                        shadowBlur: 2.4
+                                        },
+                                },{
+                                    classMinValue: 500000,
+                                    classMaxValue: 999999,
+                                    symbol: {
+                                        strokeStyle: '#b30000',
+                                        lineWidth: 2.6,
+                                        lineCap: 'round',
+                                        shadowColor: '#b30000',
+                                        shadowBlur: 2.6
+                                        },
+                                },{
+                                    classMinValue: 1000000,
+                                    classMaxValue: 3000000,
+                                    symbol: {
+                                        strokeStyle: '#7f0000',
+                                        lineWidth: 2.8,
+                                        lineCap: 'round',
+                                        shadowColor: '#7f0000',
+                                        shadowBlur: 2.8
+                                        },
+                                },
+                                ],
+                                defaultSymbol: {
+                                strokeStyle: '#000000',
+                                    lineWidth: 0.1,
+                                    lineCap: 'round',
+                                    shadowColor: '#000000',
+                                    shadowBlur: 0.1
+                                    },
+                                },
+                    pathDisplayMode: 'selection',
+                    // animationStarted: true,
+                    // animationEasingFamily: 'Cubic',
+                    // animationEasingType: 'In',
+                    // animationDuration: 2000,
+
+                    pointToLayer: function(feature, latlng) {
+                        return L.circleMarker(latlng, {
+                            fillcolor: 'teal',
+                            color: '#597898',
+                            weight: 1,
+                            fillOpacity: 0.5,
+                        }).on({
+                            click: function(e){
+                                leftSidebar.toggle();
+                            }
+                        });
+                    },
+                    onEachFeature: function(feature, layer){
+                        // var radius = calcRadius(feature.properties.refTotal);
+                        // var radius = 3;
+                        //
+                        // layer.setRadius(radius);
+
+                        // Sidebar mit Daten füllen (jquery)
+                        layer.on('click', function(e) {
+                            $('.landCont').html(feature.properties.land);
+                            $('.populationCont').html(feature.properties.pop);
+                            $('.refTotalCont').html(feature.properties.refTotal);
+                            $('.maleCont').html(feature.properties.male);
+                            $('.femaleCont').html(feature.properties.female);
+                            $('.childrenCont').html(feature.properties.u18);
+                            $('.adult34Cont').html(feature.properties.u34);
+                            $('.adult64Cont').html(feature.properties.u64);
+                            $('.rentnerCont').html(feature.properties.ue65);
+                            $('.unknownCont').html(feature.properties.unknown);
+                            $('.erstantragCont').html(feature.properties.erstantrag);
+                            $('.folgeantragCont').html(feature.properties.folgeantrag);
+                            $('.politischeHaltung').html(feature.properties.haltung);
+
+                        });
+                    }
+
+                });
+                baseLayers["2012"] = oneToManyFlowmapLayer1;
+                        // immediately select an origin point for Bezier path display,
+                        // instead of waiting for the first user click event to fire
+                        oneToManyFlowmapLayer1.selectFeaturesForPathDisplayById("origin_id", 39, true, 'SELECTION_NEW');
+
+        };
+
+        xhttp2 = new XMLHttpRequest();
+        xhttp2.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+            var response = this.responseText;
+            // var gjson = JSON.parse(response);
+        var geojson = JSON.parse(response);
+            // Attribute erweitern sodass sie mit dem Beispiel uebereinstimmen
+            geojson.features.forEach(e => {
+                e.properties.origin_id = 39;
+                e.properties.origin_lat = 35.023;
+                e.properties.origin_lon = 38.5046;
+                e.properties.dest_id = e.id;
+                e.properties.dest_lat = e.geometry.coordinates[1];
+                e.properties.dest_lon = e.geometry.coordinates[0];
+            });
+                createFlowmap2(geojson);
+        }
+
+        }
+
+        // xhttp.open("GET", "{% url 'dataset_2011'%}".replace(/\d{4}/,year), true);
+        xhttp2.open("GET", "{% url 'dataset_2013'%}", true);
+        xhttp2.send();
+        // };
+
+
+        // Flowmap erstellen und die geladenen JSONs als Input
+        function createFlowmap2(geojson) {
+        var oneToManyFlowmapLayer2 = L.canvasFlowmapLayer(geojson, {
+                    originAndDestinationFieldIds: {
+                        originUniqueIdField: "origin_id",
+                        originGeometry: {
+                            x: "origin_lon",
+                            y: "origin_lat"
+                        },
+                        destinationUniqueIdField: "dest_id",
+                        destinationGeometry: {
+                            x: "dest_lon",
+                            y: "dest_lat"
+                        }
+                    },
+                    style: function(geojson) {
+                      if (geojson.properties.isOrigin) {
+                        return {
+                          renderer: oneToManyFlowmapLayer2, // recommended to use your own L.canvas()
+                          radius: 5,
+                          weight: 1,
+                          color: 'rgb(195, 255, 62)',
+                          fillColor: 'rgba(195, 255, 62, 0.6)',
+                          fillOpacity: 0.6
+                        };
+                      } else {
+                        return {
+                          renderer: oneToManyFlowmapLayer2,
+                          radius: getRadius(geojson.properties.refTotal),
+                          weight: 0.25,
+                          color: getColor(geojson.properties.refTotal),
+                          fillColor: getColor(geojson.properties.refTotal),
+                          fillOpacity: 0.7
+                        };
+                      }
+                    },
+                    // Klassifierungsparameter
+                    canvasBezierStyle: {
+                        type: 'classBreaks',
+                        field: 'refTotal',
+                        classBreakInfos: [{
+                                    classMinValue: 1,
+                                    classMaxValue: 499,
+                                    symbol: {
+                                        strokeStyle: '#F7F4F9',
+                                        lineWidth: 0.2,
+                                        lineCap: 'round',
+                                        shadowColor: '#F7F4F9',
+                                        shadowBlur: 0.2
+                                    }
+                                }, {
+                                    classMinValue: 500,
+                                    classMaxValue: 999,
+                                    symbol: {
+                                        strokeStyle: '#E7E1EF',
+                                        lineWidth: 0.4,
+                                        lineCap: 'round',
+                                        shadowColor: '#E7E1EF',
+                                        shadowBlur: 0.4
+                                    }
+                                }, {
+                                    classMinValue: 1000,
+                                    classMaxValue: 2499,
+                                    symbol: {
+                                        strokeStyle: '#fdd49e',
+                                        lineWidth: 0.6,
+                                        lineCap: 'round',
+                                        shadowColor: '#fdd49e',
+                                        shadowBlur: 0.6
+                                    },
+                                },{
+                                    classMinValue: 2500,
+                                    classMaxValue: 4999,
+                                    symbol: {
+                                        strokeStyle: '#fdbb84',
+                                        lineWidth: 0.8,
+                                        lineCap: 'round',
+                                        shadowColor: '#fdbb84',
+                                        shadowBlur: 0.8
+                                        },
+                                },{
+                                    classMinValue: 5000,
+                                    classMaxValue: 9999,
+                                    symbol: {
+                                        strokeStyle: '#fc8d59',
+                                        lineWidth: 1.0,
+                                        lineCap: 'round',
+                                        shadowColor: '#fc8d59',
+                                        shadowBlur: 1.0
+                                        },
+                                },{
+                                    classMinValue: 10000,
+                                    classMaxValue: 99999,
+                                    symbol: {
+                                        strokeStyle: '#ef6548',
+                                        lineWidth: 2.2,
+                                        lineCap: 'round',
+                                        shadowColor: '#ef6548',
+                                        shadowBlur: 2.2
+                                        },
+                                },{
+                                    classMinValue: 100000,
+                                    classMaxValue: 499999,
+                                    symbol: {
+                                        strokeStyle: '#d7301f',
+                                        lineWidth: 2.4,
+                                        lineCap: 'round',
+                                        shadowColor: '#d7301f',
+                                        shadowBlur: 2.4
+                                        },
+                                },{
+                                    classMinValue: 500000,
+                                    classMaxValue: 999999,
+                                    symbol: {
+                                        strokeStyle: '#b30000',
+                                        lineWidth: 2.6,
+                                        lineCap: 'round',
+                                        shadowColor: '#b30000',
+                                        shadowBlur: 2.6
+                                        },
+                                },{
+                                    classMinValue: 1000000,
+                                    classMaxValue: 3000000,
+                                    symbol: {
+                                        strokeStyle: '#7f0000',
+                                        lineWidth: 2.8,
+                                        lineCap: 'round',
+                                        shadowColor: '#7f0000',
+                                        shadowBlur: 2.8
+                                        },
+                                },
+                                ],
+                                defaultSymbol: {
+                                strokeStyle: '#000000',
+                                    lineWidth: 0.1,
+                                    lineCap: 'round',
+                                    shadowColor: '#000000',
+                                    shadowBlur: 0.1
+                                    },
+                                },
+                    pathDisplayMode: 'selection',
+                    // animationStarted: true,
+                    // animationEasingFamily: 'Cubic',
+                    // animationEasingType: 'In',
+                    // animationDuration: 2000,
+
+                    pointToLayer: function(feature, latlng) {
+                        return L.circleMarker(latlng, {
+                            fillcolor: 'teal',
+                            color: '#597898',
+                            weight: 1,
+                            fillOpacity: 0.5,
+                        }).on({
+                            mouseover: function(e){
+                                this.setStyle({Color: 'yellow'});
+                            },
+                            mouseout: function(e){
+                                this.setStyle({Color: '#597989'});
+                            },
+                            click: function(e){
+                                leftSidebar.toggle();
+                            }
+                        });
+                    },
+                    onEachFeature: function(feature, layer){
+                        // var radius = calcRadius(feature.properties.refTotal);
+                        // var radius = 3;
+                        //
+                        // layer.setRadius(radius);
+
+                        // Sidebar mit Daten füllen (jquery)
+                        layer.on('click', function(e) {
+                            $('.landCont').html(feature.properties.land);
+                            $('.populationCont').html(feature.properties.pop);
+                            $('.refTotalCont').html(feature.properties.refTotal);
+                            $('.maleCont').html(feature.properties.male);
+                            $('.femaleCont').html(feature.properties.female);
+                            $('.childrenCont').html(feature.properties.u18);
+                            $('.adult34Cont').html(feature.properties.u34);
+                            $('.adult64Cont').html(feature.properties.u64);
+                            $('.rentnerCont').html(feature.properties.ue65);
+                            $('.unknownCont').html(feature.properties.unknown);
+                            $('.erstantragCont').html(feature.properties.erstantrag);
+                            $('.folgeantragCont').html(feature.properties.folgeantrag);
+                            $('.politischeHaltung').html(feature.properties.haltung);
+
+                        });
+                    }
+
+                });
+                baseLayers["2013"] = oneToManyFlowmapLayer2;
+                        // immediately select an origin point for Bezier path display,
+                        // instead of waiting for the first user click event to fire
+                        oneToManyFlowmapLayer2.selectFeaturesForPathDisplayById("origin_id", 39, true, 'SELECTION_NEW');
+
+
+        };
+
+        xhttp3 = new XMLHttpRequest();
+        xhttp3.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+            var response = this.responseText;
+            // var gjson = JSON.parse(response);
+        var geojson = JSON.parse(response);
+            // Attribute erweitern sodass sie mit dem Beispiel uebereinstimmen
+            geojson.features.forEach(e => {
+                e.properties.origin_id = 39;
+                e.properties.origin_lat = 35.023;
+                e.properties.origin_lon = 38.5046;
+                e.properties.dest_id = e.id;
+                e.properties.dest_lat = e.geometry.coordinates[1];
+                e.properties.dest_lon = e.geometry.coordinates[0];
+            });
+                createFlowmap3(geojson);
+        }
+
+        }
+
+        // xhttp.open("GET", "{% url 'dataset_2011'%}".replace(/\d{4}/,year), true);
+        xhttp3.open("GET", "{% url 'dataset_2014'%}", true);
+        xhttp3.send();
+        // };
+
+
+        // Flowmap erstellen und die geladenen JSONs als Input
+        function createFlowmap3(geojson) {
+        var oneToManyFlowmapLayer3 = L.canvasFlowmapLayer(geojson, {
+                    originAndDestinationFieldIds: {
+                        originUniqueIdField: "origin_id",
+                        originGeometry: {
+                            x: "origin_lon",
+                            y: "origin_lat"
+                        },
+                        destinationUniqueIdField: "dest_id",
+                        destinationGeometry: {
+                            x: "dest_lon",
+                            y: "dest_lat"
+                        }
+                    },
+                    style: function(geojson) {
+                      if (geojson.properties.isOrigin) {
+                        return {
+                          renderer: oneToManyFlowmapLayer3, // recommended to use your own L.canvas()
+                          radius: 5,
+                          weight: 1,
+                          color: 'rgb(195, 255, 62)',
+                          fillColor: 'rgba(195, 255, 62, 0.6)',
+                          fillOpacity: 0.6
+                        };
+                      } else {
+                        return {
+                          renderer: oneToManyFlowmapLayer3,
+                          radius: getRadius(geojson.properties.refTotal),
+                          weight: 0.25,
+                          color: getColor(geojson.properties.refTotal),
+                          fillColor: getColor(geojson.properties.refTotal),
+                          fillOpacity: 0.7
+                        };
+                      }
+                    },
+                    // Klassifierungsparameter
+                    canvasBezierStyle: {
+                        type: 'classBreaks',
+                        field: 'refTotal',
+                        classBreakInfos: [{
+                                    classMinValue: 1,
+                                    classMaxValue: 499,
+                                    symbol: {
+                                        strokeStyle: '#F7F4F9',
+                                        lineWidth: 0.2,
+                                        lineCap: 'round',
+                                        shadowColor: '#F7F4F9',
+                                        shadowBlur: 0.2
+                                    }
+                                }, {
+                                    classMinValue: 500,
+                                    classMaxValue: 999,
+                                    symbol: {
+                                        strokeStyle: '#E7E1EF',
+                                        lineWidth: 0.4,
+                                        lineCap: 'round',
+                                        shadowColor: '#E7E1EF',
+                                        shadowBlur: 0.4
+                                    }
+                                }, {
+                                    classMinValue: 1000,
+                                    classMaxValue: 2499,
+                                    symbol: {
+                                        strokeStyle: '#fdd49e',
+                                        lineWidth: 0.6,
+                                        lineCap: 'round',
+                                        shadowColor: '#fdd49e',
+                                        shadowBlur: 0.6
+                                    },
+                                },{
+                                    classMinValue: 2500,
+                                    classMaxValue: 4999,
+                                    symbol: {
+                                        strokeStyle: '#fdbb84',
+                                        lineWidth: 0.8,
+                                        lineCap: 'round',
+                                        shadowColor: '#fdbb84',
+                                        shadowBlur: 0.8
+                                        },
+                                },{
+                                    classMinValue: 5000,
+                                    classMaxValue: 9999,
+                                    symbol: {
+                                        strokeStyle: '#fc8d59',
+                                        lineWidth: 1.0,
+                                        lineCap: 'round',
+                                        shadowColor: '#fc8d59',
+                                        shadowBlur: 1.0
+                                        },
+                                },{
+                                    classMinValue: 10000,
+                                    classMaxValue: 99999,
+                                    symbol: {
+                                        strokeStyle: '#ef6548',
+                                        lineWidth: 2.2,
+                                        lineCap: 'round',
+                                        shadowColor: '#ef6548',
+                                        shadowBlur: 2.2
+                                        },
+                                },{
+                                    classMinValue: 100000,
+                                    classMaxValue: 499999,
+                                    symbol: {
+                                        strokeStyle: '#d7301f',
+                                        lineWidth: 2.4,
+                                        lineCap: 'round',
+                                        shadowColor: '#d7301f',
+                                        shadowBlur: 2.4
+                                        },
+                                },{
+                                    classMinValue: 500000,
+                                    classMaxValue: 999999,
+                                    symbol: {
+                                        strokeStyle: '#b30000',
+                                        lineWidth: 2.6,
+                                        lineCap: 'round',
+                                        shadowColor: '#b30000',
+                                        shadowBlur: 2.6
+                                        },
+                                },{
+                                    classMinValue: 1000000,
+                                    classMaxValue: 3000000,
+                                    symbol: {
+                                        strokeStyle: '#7f0000',
+                                        lineWidth: 2.8,
+                                        lineCap: 'round',
+                                        shadowColor: '#7f0000',
+                                        shadowBlur: 2.8
+                                        },
+                                },
+                                ],
+                                defaultSymbol: {
+                                strokeStyle: '#000000',
+                                    lineWidth: 0.1,
+                                    lineCap: 'round',
+                                    shadowColor: '#000000',
+                                    shadowBlur: 0.1
+                                    },
+                                },
+                    pathDisplayMode: 'selection',
+                    // animationStarted: true,
+                    // animationEasingFamily: 'Cubic',
+                    // animationEasingType: 'In',
+                    // animationDuration: 2000,
+
+                    pointToLayer: function(feature, latlng) {
+                        return L.circleMarker(latlng, {
+                            fillcolor: 'teal',
+                            color: '#597898',
+                            weight: 1,
+                            fillOpacity: 0.5,
+                        }).on({
+                            mouseover: function(e){
+                                this.setStyle({Color: 'yellow'});
+                            },
+                            mouseout: function(e){
+                                this.setStyle({Color: '#597989'});
+                            },
+                            click: function(e){
+                                leftSidebar.toggle();
+                            }
+                        });
+                    },
+                    onEachFeature: function(feature, layer){
+                        // var radius = calcRadius(feature.properties.refTotal);
+                        // var radius = 3;
+                        //
+                        // layer.setRadius(radius);
+
+                        // Sidebar mit Daten füllen (jquery)
+                        layer.on('click', function(e) {
+                            $('.landCont').html(feature.properties.land);
+                            $('.populationCont').html(feature.properties.pop);
+                            $('.refTotalCont').html(feature.properties.refTotal);
+                            $('.maleCont').html(feature.properties.male);
+                            $('.femaleCont').html(feature.properties.female);
+                            $('.childrenCont').html(feature.properties.u18);
+                            $('.adult34Cont').html(feature.properties.u34);
+                            $('.adult64Cont').html(feature.properties.u64);
+                            $('.rentnerCont').html(feature.properties.ue65);
+                            $('.unknownCont').html(feature.properties.unknown);
+                            $('.erstantragCont').html(feature.properties.erstantrag);
+                            $('.folgeantragCont').html(feature.properties.folgeantrag);
+                            $('.politischeHaltung').html(feature.properties.haltung);
+
+                        });
+                    }
+
+                });
+                baseLayers["2014"] = oneToManyFlowmapLayer3;
+                        // immediately select an origin point for Bezier path display,
+                        // instead of waiting for the first user click event to fire
+                        oneToManyFlowmapLayer3.selectFeaturesForPathDisplayById("origin_id", 39, true, 'SELECTION_NEW');
+
+        };
+
+        xhttp4 = new XMLHttpRequest();
+        xhttp4.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+            var response = this.responseText;
+            // var gjson = JSON.parse(response);
+        var geojson = JSON.parse(response);
+            // Attribute erweitern sodass sie mit dem Beispiel uebereinstimmen
+            geojson.features.forEach(e => {
+                e.properties.origin_id = 39;
+                e.properties.origin_lat = 35.023;
+                e.properties.origin_lon = 38.5046;
+                e.properties.dest_id = e.id;
+                e.properties.dest_lat = e.geometry.coordinates[1];
+                e.properties.dest_lon = e.geometry.coordinates[0];
+            });
+                createFlowmap4(geojson);
+        }
+
+        }
+
+        // xhttp.open("GET", "{% url 'dataset_2011'%}".replace(/\d{4}/,year), true);
+        xhttp4.open("GET", "{% url 'dataset_2015'%}", true);
+        xhttp4.send();
+        // };
+
+
+        // Flowmap erstellen und die geladenen JSONs als Input
+        function createFlowmap4(geojson) {
+        var oneToManyFlowmapLayer4 = L.canvasFlowmapLayer(geojson, {
+                    originAndDestinationFieldIds: {
+                        originUniqueIdField: "origin_id",
+                        originGeometry: {
+                            x: "origin_lon",
+                            y: "origin_lat"
+                        },
+                        destinationUniqueIdField: "dest_id",
+                        destinationGeometry: {
+                            x: "dest_lon",
+                            y: "dest_lat"
+                        }
+                    },
+                    style: function(geojson) {
+                      if (geojson.properties.isOrigin) {
+                        return {
+                          renderer: oneToManyFlowmapLayer4, // recommended to use your own L.canvas()
+                          radius: 5,
+                          weight: 1,
+                          color: 'rgb(195, 255, 62)',
+                          fillColor: 'rgba(195, 255, 62, 0.6)',
+                          fillOpacity: 0.6
+                        };
+                      } else {
+                        return {
+                          renderer: oneToManyFlowmapLayer4,
+                          radius: getRadius(geojson.properties.refTotal),
+                          //radius: calcRadius(geojson.properties.refTotal),
+                          weight: 0.25,
+                          color: getColor(geojson.properties.refTotal),
+                          fillColor: getColor(geojson.properties.refTotal),
+                          fillOpacity: 0.7
+                        };
+                      }
+                    },
+                    // Klassifierungsparameter
+                    canvasBezierStyle: {
+                        type: 'classBreaks',
+                        field: 'refTotal',
+                        classBreakInfos: [{
+                                    classMinValue: 1,
+                                    classMaxValue: 499,
+                                    symbol: {
+                                        strokeStyle: '#F7F4F9',
+                                        lineWidth: 0.2,
+                                        lineCap: 'round',
+                                        shadowColor: '#F7F4F9',
+                                        shadowBlur: 0.2
+                                    }
+                                }, {
+                                    classMinValue: 500,
+                                    classMaxValue: 999,
+                                    symbol: {
+                                        strokeStyle: '#E7E1EF',
+                                        lineWidth: 0.4,
+                                        lineCap: 'round',
+                                        shadowColor: '#E7E1EF',
+                                        shadowBlur: 0.4
+                                    }
+                                }, {
+                                    classMinValue: 1000,
+                                    classMaxValue: 2499,
+                                    symbol: {
+                                        strokeStyle: '#fdd49e',
+                                        lineWidth: 0.6,
+                                        lineCap: 'round',
+                                        shadowColor: '#fdd49e',
+                                        shadowBlur: 0.6
+                                    },
+                                },{
+                                    classMinValue: 2500,
+                                    classMaxValue: 4999,
+                                    symbol: {
+                                        strokeStyle: '#fdbb84',
+                                        lineWidth: 0.8,
+                                        lineCap: 'round',
+                                        shadowColor: '#fdbb84',
+                                        shadowBlur: 0.8
+                                        },
+                                },{
+                                    classMinValue: 5000,
+                                    classMaxValue: 9999,
+                                    symbol: {
+                                        strokeStyle: '#fc8d59',
+                                        lineWidth: 1.0,
+                                        lineCap: 'round',
+                                        shadowColor: '#fc8d59',
+                                        shadowBlur: 1.0
+                                        },
+                                },{
+                                    classMinValue: 10000,
+                                    classMaxValue: 99999,
+                                    symbol: {
+                                        strokeStyle: '#ef6548',
+                                        lineWidth: 2.2,
+                                        lineCap: 'round',
+                                        shadowColor: '#ef6548',
+                                        shadowBlur: 2.2
+                                        },
+                                },{
+                                    classMinValue: 100000,
+                                    classMaxValue: 499999,
+                                    symbol: {
+                                        strokeStyle: '#d7301f',
+                                        lineWidth: 2.4,
+                                        lineCap: 'round',
+                                        shadowColor: '#d7301f',
+                                        shadowBlur: 2.4
+                                        },
+                                },{
+                                    classMinValue: 500000,
+                                    classMaxValue: 999999,
+                                    symbol: {
+                                        strokeStyle: '#b30000',
+                                        lineWidth: 2.6,
+                                        lineCap: 'round',
+                                        shadowColor: '#b30000',
+                                        shadowBlur: 2.6
+                                        },
+                                },{
+                                    classMinValue: 1000000,
+                                    classMaxValue: 3000000,
+                                    symbol: {
+                                        strokeStyle: '#7f0000',
+                                        lineWidth: 2.8,
+                                        lineCap: 'round',
+                                        shadowColor: '#7f0000',
+                                        shadowBlur: 2.8
+                                        },
+                                },
+                                ],
+                                defaultSymbol: {
+                                strokeStyle: '#000000',
+                                    lineWidth: 0.1,
+                                    lineCap: 'round',
+                                    shadowColor: '#000000',
+                                    shadowBlur: 0.1
+                                    },
+                                },
+                    pathDisplayMode: 'selection',
+                    // animationStarted: true,
+                    // animationEasingFamily: 'Cubic',
+                    // animationEasingType: 'In',
+                    // animationDuration: 2000,
+
+                    pointToLayer: function(feature, latlng) {
+                        return L.circleMarker(latlng, {
+                            fillcolor: 'teal',
+                            color: '#597898',
+                            weight: 1,
+                            fillOpacity: 0.5,
+                        }).on({
+                            mouseover: function(e){
+                                this.setStyle({Color: 'yellow'});
+                            },
+                            mouseout: function(e){
+                                this.setStyle({Color: '#597989'});
+                            },
+                            click: function(e){
+                                leftSidebar.toggle();
+                            }
+                        });
+                    },
+                    onEachFeature: function(feature, layer){
+                        // var radius = calcRadius(feature.properties.refTotal);
+                        // var radius = 3;
+                        //
+                        // layer.setRadius(radius);
+
+                        // Sidebar mit Daten füllen (jquery)
+                        layer.on('click', function(e) {
+                            $('.landCont').html(feature.properties.land);
+                            $('.populationCont').html(feature.properties.pop);
+                            $('.refTotalCont').html(feature.properties.refTotal);
+                            $('.maleCont').html(feature.properties.male);
+                            $('.femaleCont').html(feature.properties.female);
+                            $('.childrenCont').html(feature.properties.u18);
+                            $('.adult34Cont').html(feature.properties.u34);
+                            $('.adult64Cont').html(feature.properties.u64);
+                            $('.rentnerCont').html(feature.properties.ue65);
+                            $('.unknownCont').html(feature.properties.unknown);
+                            $('.erstantragCont').html(feature.properties.erstantrag);
+                            $('.folgeantragCont').html(feature.properties.folgeantrag);
+                            $('.politischeHaltung').html(feature.properties.haltung);
+
+                        });
+                    }
+
+                });
+                baseLayers["2015"] = oneToManyFlowmapLayer4;
+                        // immediately select an origin point for Bezier path display,
+                        // instead of waiting for the first user click event to fire
+                        oneToManyFlowmapLayer4.selectFeaturesForPathDisplayById("origin_id", 39, true, 'SELECTION_NEW');
+
+
+        };
+
+        xhttp5 = new XMLHttpRequest();
+        xhttp5.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+            var response = this.responseText;
+            // var gjson = JSON.parse(response);
+        var geojson = JSON.parse(response);
+            // Attribute erweitern sodass sie mit dem Beispiel uebereinstimmen
+            geojson.features.forEach(e => {
+                e.properties.origin_id = 39;
+                e.properties.origin_lat = 35.023;
+                e.properties.origin_lon = 38.5046;
+                e.properties.dest_id = e.id;
+                e.properties.dest_lat = e.geometry.coordinates[1];
+                e.properties.dest_lon = e.geometry.coordinates[0];
+            });
+                createFlowmap5(geojson);
+        }
+
+        }
+
+        // xhttp.open("GET", "{% url 'dataset_2011'%}".replace(/\d{4}/,year), true);
+        xhttp5.open("GET", "{% url 'dataset_2016'%}", true);
+        xhttp5.send();
+        // };
+
+
+        // Flowmap erstellen und die geladenen JSONs als Input
+        function createFlowmap5(geojson) {
+        var oneToManyFlowmapLayer5 = L.canvasFlowmapLayer(geojson, {
+                    originAndDestinationFieldIds: {
+                        originUniqueIdField: "origin_id",
+                        originGeometry: {
+                            x: "origin_lon",
+                            y: "origin_lat"
+                        },
+                        destinationUniqueIdField: "dest_id",
+                        destinationGeometry: {
+                            x: "dest_lon",
+                            y: "dest_lat"
+                        }
+                    },
+                    style: function(geojson) {
+                      if (geojson.properties.isOrigin) {
+                        return {
+                          renderer: oneToManyFlowmapLayer5, // recommended to use your own L.canvas()
+                          radius: 5,
+                          weight: 1,
+                          color: 'rgb(195, 255, 62)',
+                          fillColor: 'rgba(195, 255, 62, 0.6)',
+                          fillOpacity: 0.6
+                        };
+                      } else {
+                        return {
+                          renderer: oneToManyFlowmapLayer5,
+                          radius: getRadius(geojson.properties.refTotal),
+                          weight: 0.25,
+                          color: getColor(geojson.properties.refTotal),
+                          fillColor: getColor(geojson.properties.refTotal),
+                          fillOpacity: 0.7
+                        };
+                      }
+                    },
+                    // Klassifierungsparameter
+                    canvasBezierStyle: {
+                        type: 'classBreaks',
+                        field: 'refTotal',
+                        classBreakInfos: [{
+                                    classMinValue: 1,
+                                    classMaxValue: 499,
+                                    symbol: {
+                                        strokeStyle: '#F7F4F9',
+                                        lineWidth: 0.2,
+                                        lineCap: 'round',
+                                        shadowColor: '#F7F4F9',
+                                        shadowBlur: 0.2
+                                    }
+                                }, {
+                                    classMinValue: 500,
+                                    classMaxValue: 999,
+                                    symbol: {
+                                        strokeStyle: '#E7E1EF',
+                                        lineWidth: 0.4,
+                                        lineCap: 'round',
+                                        shadowColor: '#E7E1EF',
+                                        shadowBlur: 0.4
+                                    }
+                                }, {
+                                    classMinValue: 1000,
+                                    classMaxValue: 2499,
+                                    symbol: {
+                                        strokeStyle: '#fdd49e',
+                                        lineWidth: 0.6,
+                                        lineCap: 'round',
+                                        shadowColor: '#fdd49e',
+                                        shadowBlur: 0.6
+                                    },
+                                },{
+                                    classMinValue: 2500,
+                                    classMaxValue: 4999,
+                                    symbol: {
+                                        strokeStyle: '#fdbb84',
+                                        lineWidth: 0.8,
+                                        lineCap: 'round',
+                                        shadowColor: '#fdbb84',
+                                        shadowBlur: 0.8
+                                        },
+                                },{
+                                    classMinValue: 5000,
+                                    classMaxValue: 9999,
+                                    symbol: {
+                                        strokeStyle: '#fc8d59',
+                                        lineWidth: 1.0,
+                                        lineCap: 'round',
+                                        shadowColor: '#fc8d59',
+                                        shadowBlur: 1.0
+                                        },
+                                },{
+                                    classMinValue: 10000,
+                                    classMaxValue: 99999,
+                                    symbol: {
+                                        strokeStyle: '#ef6548',
+                                        lineWidth: 2.2,
+                                        lineCap: 'round',
+                                        shadowColor: '#ef6548',
+                                        shadowBlur: 2.2
+                                        },
+                                },{
+                                    classMinValue: 100000,
+                                    classMaxValue: 499999,
+                                    symbol: {
+                                        strokeStyle: '#d7301f',
+                                        lineWidth: 2.4,
+                                        lineCap: 'round',
+                                        shadowColor: '#d7301f',
+                                        shadowBlur: 2.4
+                                        },
+                                },{
+                                    classMinValue: 500000,
+                                    classMaxValue: 999999,
+                                    symbol: {
+                                        strokeStyle: '#b30000',
+                                        lineWidth: 2.6,
+                                        lineCap: 'round',
+                                        shadowColor: '#b30000',
+                                        shadowBlur: 2.6
+                                        },
+                                },{
+                                    classMinValue: 1000000,
+                                    classMaxValue: 3000000,
+                                    symbol: {
+                                        strokeStyle: '#7f0000',
+                                        lineWidth: 2.8,
+                                        lineCap: 'round',
+                                        shadowColor: '#7f0000',
+                                        shadowBlur: 2.8
+                                        },
+                                },
+                                ],
+                                defaultSymbol: {
+                                strokeStyle: '#000000',
+                                    lineWidth: 0.1,
+                                    lineCap: 'round',
+                                    shadowColor: '#000000',
+                                    shadowBlur: 0.1
+                                    },
+                                },
+                    pathDisplayMode: 'selection',
+                    // animationStarted: true,
+                    // animationEasingFamily: 'Cubic',
+                    // animationEasingType: 'In',
+                    // animationDuration: 2000,
+
+                    pointToLayer: function(feature, latlng) {
+                        return L.circleMarker(latlng, {
+                            fillcolor: 'teal',
+                            color: '#597898',
+                            weight: 1,
+                            fillOpacity: 0.5,
+                        }).on({
+                            mouseover: function(e){
+                                this.setStyle({Color: 'yellow'});
+                            },
+                            mouseout: function(e){
+                                this.setStyle({Color: '#597989'});
+                            },
+                            click: function(e){
+                                leftSidebar.toggle();
+                            }
+                        });
+                    },
+                    onEachFeature: function(feature, layer){
+                        // var radius = calcRadius(feature.properties.refTotal);
+                        // var radius = 3;
+                        //
+                        // layer.setRadius(radius);
+
+                        // Sidebar mit Daten füllen (jquery)
+                        layer.on('click', function(e) {
+                            $('.landCont').html(feature.properties.land);
+                            $('.populationCont').html(feature.properties.pop);
+                            $('.refTotalCont').html(feature.properties.refTotal);
+                            $('.maleCont').html(feature.properties.male);
+                            $('.femaleCont').html(feature.properties.female);
+                            $('.childrenCont').html(feature.properties.u18);
+                            $('.adult34Cont').html(feature.properties.u34);
+                            $('.adult64Cont').html(feature.properties.u64);
+                            $('.rentnerCont').html(feature.properties.ue65);
+                            $('.unknownCont').html(feature.properties.unknown);
+                            $('.erstantragCont').html(feature.properties.erstantrag);
+                            $('.folgeantragCont').html(feature.properties.folgeantrag);
+                            $('.politischeHaltung').html(feature.properties.haltung);
+
+                        });
+                    }
+
+                });
+                baseLayers["2016"] = oneToManyFlowmapLayer5;
+                        // immediately select an origin point for Bezier path display,
+                        // instead of waiting for the first user click event to fire
+                        oneToManyFlowmapLayer5.selectFeaturesForPathDisplayById("origin_id", 39, true, 'SELECTION_NEW');
+
+
+        };
+
+        xhttp6 = new XMLHttpRequest();
+        xhttp6.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+            var response = this.responseText;
+            // var gjson = JSON.parse(response);
+        var geojson = JSON.parse(response);
+            // Attribute erweitern sodass sie mit dem Beispiel uebereinstimmen
+            geojson.features.forEach(e => {
+                e.properties.origin_id = 39;
+                e.properties.origin_lat = 35.023;
+                e.properties.origin_lon = 38.5046;
+                e.properties.dest_id = e.id;
+                e.properties.dest_lat = e.geometry.coordinates[1];
+                e.properties.dest_lon = e.geometry.coordinates[0];
+            });
+                createFlowmap6(geojson);
+        }
+
+        }
+
+        // xhttp.open("GET", "{% url 'dataset_2011'%}".replace(/\d{4}/,year), true);
+        xhttp6.open("GET", "{% url 'dataset_2017'%}", true);
+        xhttp6.send();
+        // };
+
+
+        // Flowmap erstellen und die geladenen JSONs als Input
+        function createFlowmap6(geojson) {
+        var oneToManyFlowmapLayer6 = L.canvasFlowmapLayer(geojson, {
+                    originAndDestinationFieldIds: {
+                        originUniqueIdField: "origin_id",
+                        originGeometry: {
+                            x: "origin_lon",
+                            y: "origin_lat"
+                        },
+                        destinationUniqueIdField: "dest_id",
+                        destinationGeometry: {
+                            x: "dest_lon",
+                            y: "dest_lat"
+                        }
+                    },
+                    style: function(geojson) {
+                      if (geojson.properties.isOrigin) {
+                        return {
+                          renderer: oneToManyFlowmapLayer6, // recommended to use your own L.canvas()
+                          radius: 5,
+                          weight: 1,
+                          color: 'rgb(195, 255, 62)',
+                          fillColor: 'rgba(195, 255, 62, 0.6)',
+                          fillOpacity: 0.6
+                        };
+                      } else {
+                        return {
+                          renderer: oneToManyFlowmapLayer6,
+                          radius: getRadius(geojson.properties.refTotal),
+                          weight: 0.25,
+                          color: getColor(geojson.properties.refTotal),
+                          fillColor: getColor(geojson.properties.refTotal),
+                          fillOpacity: 0.7
+                        };
+                      }
+                    },
+
+                    // Klassifierungsparameter
+                    canvasBezierStyle: {
+                        type: 'classBreaks',
+                        field: 'refTotal',
+                        classBreakInfos: [{
+                                    classMinValue: 1,
+                                    classMaxValue: 499,
+                                    symbol: {
+                                        strokeStyle: '#F7F4F9',
+                                        lineWidth: 0.2,
+                                        lineCap: 'round',
+                                        shadowColor: '#F7F4F9',
+                                        shadowBlur: 0.2
+                                    }
+                                }, {
+                                    classMinValue: 500,
+                                    classMaxValue: 999,
+                                    symbol: {
+                                        strokeStyle: '#E7E1EF',
+                                        lineWidth: 0.4,
+                                        lineCap: 'round',
+                                        shadowColor: '#E7E1EF',
+                                        shadowBlur: 0.4
+                                    }
+                                }, {
+                                    classMinValue: 1000,
+                                    classMaxValue: 2499,
+                                    symbol: {
+                                        strokeStyle: '#fdd49e',
+                                        lineWidth: 0.6,
+                                        lineCap: 'round',
+                                        shadowColor: '#fdd49e',
+                                        shadowBlur: 0.6
+                                    },
+                                },{
+                                    classMinValue: 2500,
+                                    classMaxValue: 4999,
+                                    symbol: {
+                                        strokeStyle: '#fdbb84',
+                                        lineWidth: 0.8,
+                                        lineCap: 'round',
+                                        shadowColor: '#fdbb84',
+                                        shadowBlur: 0.8
+                                        },
+                                },{
+                                    classMinValue: 5000,
+                                    classMaxValue: 9999,
+                                    symbol: {
+                                        strokeStyle: '#fc8d59',
+                                        lineWidth: 1.0,
+                                        lineCap: 'round',
+                                        shadowColor: '#fc8d59',
+                                        shadowBlur: 1.0
+                                        },
+                                },{
+                                    classMinValue: 10000,
+                                    classMaxValue: 99999,
+                                    symbol: {
+                                        strokeStyle: '#ef6548',
+                                        lineWidth: 2.2,
+                                        lineCap: 'round',
+                                        shadowColor: '#ef6548',
+                                        shadowBlur: 2.2
+                                        },
+                                },{
+                                    classMinValue: 100000,
+                                    classMaxValue: 499999,
+                                    symbol: {
+                                        strokeStyle: '#d7301f',
+                                        lineWidth: 2.4,
+                                        lineCap: 'round',
+                                        shadowColor: '#d7301f',
+                                        shadowBlur: 2.4
+                                        },
+                                },{
+                                    classMinValue: 500000,
+                                    classMaxValue: 999999,
+                                    symbol: {
+                                        strokeStyle: '#b30000',
+                                        lineWidth: 2.6,
+                                        lineCap: 'round',
+                                        shadowColor: '#b30000',
+                                        shadowBlur: 2.6
+                                        },
+                                },{
+                                    classMinValue: 1000000,
+                                    classMaxValue: 3000000,
+                                    symbol: {
+                                        strokeStyle: '#7f0000',
+                                        lineWidth: 2.8,
+                                        lineCap: 'round',
+                                        shadowColor: '#7f0000',
+                                        shadowBlur: 2.8
+                                        },
+                                },
+                                ],
+                                defaultSymbol: {
+                                strokeStyle: '#000000',
+                                    lineWidth: 0.1,
+                                    lineCap: 'round',
+                                    shadowColor: '#000000',
+                                    shadowBlur: 0.1
+                                    },
+                                },
+                    pathDisplayMode: 'selection',
+                    // animationStarted: true,
+                    // animationEasingFamily: 'Cubic',
+                    // animationEasingType: 'In',
+                    // animationDuration: 2000,
+
+                    pointToLayer: function(feature, latlng) {
+                        return L.circleMarker(latlng, {
+                            fillcolor: 'teal',
+                            color: '#597898',
+                            weight: 1,
+                            fillOpacity: 0.5,
+                        }).on({
+                            mouseover: function(e){
+                                this.setStyle({Color: 'yellow'});
+                            },
+                            mouseout: function(e){
+                                this.setStyle({Color: '#597989'});
+                            },
+                            click: function(e){
+                                leftSidebar.toggle();
+                            }
+                        });
+                    },
+                    onEachFeature: function(feature, layer){
+                        // var radius = getRadius(feature.properties.refTotal);
+                        // var radius = 3;
+                        //
+                        // layer.setRadius(radius);
+
+                        // Sidebar mit Daten füllen (jquery)
+                        layer.on('click', function(e) {
+                            $('.landCont').html(feature.properties.land);
+                            $('.populationCont').html(feature.properties.pop);
+                            $('.refTotalCont').html(feature.properties.refTotal);
+                            $('.maleCont').html(feature.properties.male);
+                            $('.femaleCont').html(feature.properties.female);
+                            $('.childrenCont').html(feature.properties.u18);
+                            $('.adult34Cont').html(feature.properties.u34);
+                            $('.adult64Cont').html(feature.properties.u64);
+                            $('.rentnerCont').html(feature.properties.ue65);
+                            $('.unknownCont').html(feature.properties.unknown);
+                            $('.erstantragCont').html(feature.properties.erstantrag);
+                            $('.folgeantragCont').html(feature.properties.folgeantrag);
+                            $('.politischeHaltung').html(feature.properties.haltung);
+
+                        });
+                    }
+
+                });
+                baseLayers["2017"] = oneToManyFlowmapLayer6;
+                        // immediately select an origin point for Bezier path display,
+                        // instead of waiting for the first user click event to fire
+                        oneToManyFlowmapLayer6.selectFeaturesForPathDisplayById("origin_id", 39, true, 'SELECTION_NEW');
+
+        };
+
+        xhttp7 = new XMLHttpRequest();
+        xhttp7.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+            var response = this.responseText;
+            // var gjson = JSON.parse(response);
+        var geojson = JSON.parse(response);
+            // Attribute erweitern sodass sie mit dem Beispiel uebereinstimmen
+            geojson.features.forEach(e => {
+                e.properties.origin_id = 39;
+                e.properties.origin_lat = 35.023;
+                e.properties.origin_lon = 38.5046;
+                e.properties.dest_id = e.id;
+                e.properties.dest_lat = e.geometry.coordinates[1];
+                e.properties.dest_lon = e.geometry.coordinates[0];
+            });
+                createFlowmap7(geojson);
+                displayHorBarChart7();
+        }
+
+        }
+
+        // xhttp.open("GET", "{% url 'dataset_2011'%}".replace(/\d{4}/,year), true);
+        xhttp7.open("GET", "{% url 'dataset_2018'%}", true);
+        xhttp7.send();
+        // };
+
+
+        // Flowmap erstellen und die geladenen JSONs als Input
+        function createFlowmap7(geojson) {
+        var oneToManyFlowmapLayer7 = L.canvasFlowmapLayer(geojson, {
+                    originAndDestinationFieldIds: {
+                        originUniqueIdField: "origin_id",
+                        originGeometry: {
+                            x: "origin_lon",
+                            y: "origin_lat"
+                        },
+                        destinationUniqueIdField: "dest_id",
+                        destinationGeometry: {
+                            x: "dest_lon",
+                            y: "dest_lat"
+                        }
+                    },
+                    style: function(geojson) {
+                      if (geojson.properties.isOrigin) {
+                        return {
+                          renderer: oneToManyFlowmapLayer7, // recommended to use your own L.canvas()
+                          radius: 5,
+                          weight: 1,
+                          color: 'rgb(195, 255, 62)',
+                          fillColor: 'rgba(195, 255, 62, 0.6)',
+                          fillOpacity: 0.6
+                        };
+                      } else {
+                        return {
+                          renderer: oneToManyFlowmapLayer7,
+                          radius: getRadius(geojson.properties.refTotal),
+                          weight: 0.25,
+                          color: getColor(geojson.properties.refTotal),
+                          fillColor: getColor(geojson.properties.refTotal),
+                          fillOpacity: 0.7
+                        };
+                      }
+                    },
+                    // Klassifierungsparameter
+                    canvasBezierStyle: {
+                        type: 'classBreaks',
+                        field: 'refTotal',
+                        classBreakInfos: [{
+                                    classMinValue: 1,
+                                    classMaxValue: 499,
+                                    symbol: {
+                                        strokeStyle: '#F7F4F9',
+                                        lineWidth: 0.2,
+                                        lineCap: 'round',
+                                        shadowColor: '#F7F4F9',
+                                        shadowBlur: 0.2
+                                    }
+                                }, {
+                                    classMinValue: 500,
+                                    classMaxValue: 999,
+                                    symbol: {
+                                        strokeStyle: '#E7E1EF',
+                                        lineWidth: 0.4,
+                                        lineCap: 'round',
+                                        shadowColor: '#E7E1EF',
+                                        shadowBlur: 0.4
+                                    }
+                                }, {
+                                    classMinValue: 1000,
+                                    classMaxValue: 2499,
+                                    symbol: {
+                                        strokeStyle: '#fdd49e',
+                                        lineWidth: 0.6,
+                                        lineCap: 'round',
+                                        shadowColor: '#fdd49e',
+                                        shadowBlur: 0.6
+                                    },
+                                },{
+                                    classMinValue: 2500,
+                                    classMaxValue: 4999,
+                                    symbol: {
+                                        strokeStyle: '#fdbb84',
+                                        lineWidth: 0.8,
+                                        lineCap: 'round',
+                                        shadowColor: '#fdbb84',
+                                        shadowBlur: 0.8
+                                        },
+                                },{
+                                    classMinValue: 5000,
+                                    classMaxValue: 9999,
+                                    symbol: {
+                                        strokeStyle: '#fc8d59',
+                                        lineWidth: 1.0,
+                                        lineCap: 'round',
+                                        shadowColor: '#fc8d59',
+                                        shadowBlur: 1.0
+                                        },
+                                },{
+                                    classMinValue: 10000,
+                                    classMaxValue: 99999,
+                                    symbol: {
+                                        strokeStyle: '#ef6548',
+                                        lineWidth: 2.2,
+                                        lineCap: 'round',
+                                        shadowColor: '#ef6548',
+                                        shadowBlur: 2.2
+                                        },
+                                },{
+                                    classMinValue: 100000,
+                                    classMaxValue: 499999,
+                                    symbol: {
+                                        strokeStyle: '#d7301f',
+                                        lineWidth: 2.4,
+                                        lineCap: 'round',
+                                        shadowColor: '#d7301f',
+                                        shadowBlur: 2.4
+                                        },
+                                },{
+                                    classMinValue: 500000,
+                                    classMaxValue: 999999,
+                                    symbol: {
+                                        strokeStyle: '#b30000',
+                                        lineWidth: 2.6,
+                                        lineCap: 'round',
+                                        shadowColor: '#b30000',
+                                        shadowBlur: 2.6
+                                        },
+                                },{
+                                    classMinValue: 1000000,
+                                    classMaxValue: 3000000,
+                                    symbol: {
+                                        strokeStyle: '#7f0000',
+                                        lineWidth: 2.8,
+                                        lineCap: 'round',
+                                        shadowColor: '#7f0000',
+                                        shadowBlur: 2.8
+                                        },
+                                },
+                                ],
+                                defaultSymbol: {
+                                strokeStyle: '#000000',
+                                    lineWidth: 0.1,
+                                    lineCap: 'round',
+                                    shadowColor: '#000000',
+                                    shadowBlur: 0.1
+                                    },
+                                },
+                    pathDisplayMode: 'selection',
+                    // animationStarted: true,
+                    // animationEasingFamily: 'Cubic',
+                    // animationEasingType: 'In',
+                    // animationDuration: 2000,
+
+                    pointToLayer: function(feature, latlng) {
+                        return L.circleMarker(latlng, {
+                            fillcolor: 'teal',
+                            color: '#597898',
+                            weight: 1,
+                            fillOpacity: 0.5,
+                        }).on({
+                            mouseover: function(e){
+                                this.setStyle({Color: 'yellow'});
+                            },
+                            mouseout: function(e){
+                                this.setStyle({Color: '#597989'});
+                            },
+                            //click: function(e){
+                              //  leftSidebar.toggle();
+                            //}
+                        });
+                    },
+                    onEachFeature: function(feature, layer){
+                        // var radius = calcRadius(feature.properties.refTotal);
+                        // var radius = 3;
+                        //
+                        // layer.setRadius(radius);
+
+                        // Sidebar mit Daten füllen (jquery)
+                        layer.on('click', function(e) {
+                            $('.landCont').html(feature.properties.land);
+                            $('.populationCont').html(feature.properties.pop);
+                            $('.refTotalCont').html(feature.properties.refTotal);
+                            $('.maleCont').html(feature.properties.male);
+                            $('.femaleCont').html(feature.properties.female);
+                            $('.childrenCont').html(feature.properties.u18);
+                            $('.adult34Cont').html(feature.properties.u34);
+                            $('.adult64Cont').html(feature.properties.u64);
+                            $('.rentnerCont').html(feature.properties.ue65);
+                            $('.unknownCont').html(feature.properties.unknown);
+                            $('.erstantragCont').html(feature.properties.erstantrag);
+                            $('.folgeantragCont').html(feature.properties.folgeantrag);
+                            $('.politischeHaltung').html(feature.properties.haltung);
+
+                            leftSidebar.toggle();
+
+                        });
+                    }
+
+                }).addTo(map);
+                baseLayers["2018"] = oneToManyFlowmapLayer7;
+                        // immediately select an origin point for Bezier path display,
+                        // instead of waiting for the first user click event to fire
+                        oneToManyFlowmapLayer7.selectFeaturesForPathDisplayById("origin_id", 39, true, 'SELECTION_NEW');
+
+        };
+
+        setTimeout(function(){
+        L.control.layers(baseLayers, null,{position: 'topleft', collapsed:false, }).addTo(map)
+    }, 2500)
+
+        // Legende erstellen
+
+        // function createLegend() {
+        // var legend = L.control({
+        //     position: 'bottomright'
+        // });
+        //
+        // legend.onAdd = function(map) {
+        //     var legendContainer = L.DomUtil.create('div', 'legend');
+        //
+        //     var classes = [1, 500, 1000, 2500, 5000, 10000, 100000, 500000, 1000000];
+        //     var labels = [],
+        //     from, to;
+        //     //labels.push("<h2 id='legendTitle'>Legende</h2>");
+        //     labels.push("<h4 id='legendDesc'>Anzahl der Flüchtenden</h4>");
+        //
+        //     for (var i = 0; i < classes.length; i ++) {
+        //         from = classes[i];
+        //         to = classes[i+1];
+        //         labels.push(
+        //             '<span style="margin-top:2px; margin-bottom:2px;display: inline-block;"><j style="background:' + getColor(from) + ';width: ' + getRadius(from)*2 + 'px; height:'+ getRadius(from)*2 +'px; "></j> ' +
+        //             from + (to ? ' &ndash; ' + (to - 1) : '+') + "</span>"
+        //         )};
+        //
+        //     legendContainer.innerHTML = labels.join('<br>');
+        //     return legendContainer;
+        //
+        // };
+        // legend.addTo(map);
+        // }
+
+        L.Control.Watermark = L.Control.extend({
+           onAdd: function(map) {
+               var img = L.DomUtil.create('img');
+
+               img.src = "{% static '/flowmapStatics/legende.png' %}";
+               img.style.width = '250px';
+               img.style.height= '310px';
+
+               return img;
+           }
+       });
+
+       L.control.watermark = function(opts) {
+           return new L.Control.Watermark(opts);
+       }
+
+       L.control.watermark({ position: 'bottomright' }).addTo(map);
+
+        //Diagrammcontainer erstellen
+
+        barChartLegend();
+
+        function barChartLegend() {
+            var info = L.control({position: 'topright'});
+            info.onAdd = function(map) {
+                var div = L.DomUtil.create('div', 'info');
+                div.innerHTML += '<h3> Länder mit den höchsten Flüchtlingsaufkommen </h3>';
+                div.innerHTML += '<canvas id="horBarChart"></canvas>';
+                div.innerHTML += '<button class="btn btn-success" onclick="displayHorBarChart()">2011</button>' // buttons, die die displayHorBarChart funktion ausfuehrt
+                div.innerHTML += '<button class="btn btn-success" onclick="displayHorBarChart1()">2012</button>'
+                div.innerHTML += '<button class="btn btn-success" onclick="displayHorBarChart2()">2013</button>'
+                div.innerHTML += '<button class="btn btn-success" onclick="displayHorBarChart3()">2014</button>'
+                div.innerHTML += '<button class="btn btn-success" onclick="displayHorBarChart4()">2015</button>'
+                div.innerHTML += '<button class="btn btn-success" onclick="displayHorBarChart5()">2016</button>'
+                div.innerHTML += '<button class="btn btn-success" onclick="displayHorBarChart6()">2017</button>'
+                div.innerHTML += '<button class="btn active btn-success" onclick="displayHorBarChart7()">2018</button>'
+
+                div.id = 'info' // id muss dem document zugewiesen werden, da sonst kein document.getElementById zugriff moeglich
+                return div;
+            };
+
+            info.addTo(map);
+        }
+
+        // aktivstatus der buttons
+        var btnsCont = document.getElementById("info");
+        var btns = btnsCont.getElementsByClassName("btn");
+
+        for (var j = 0; j < btns.length; j++) {
+            btns[j].addEventListener("click", function() {
+                var current = document.getElementsByClassName("active");
+                current[0].className = current[0].className.replace(" active", "");
+                this.className += " active";
+            });
+        }
+
+        userGuide();
+        function userGuide() {
+            var guide = L.control({position: 'topleft'});
+            guide.onAdd = function(map) {
+                var guide = L.DomUtil.create('div', 'help-tip');
+                guide.innerHTML += '<p> 1. Wähle links eine Jahreszahl aus, um den Flowmap-Layer zu aktualisieren <br> <br> 2. Klicke auf einen Zielpunkt auf der Karte, um die Sidebar einzublenden.<br><br> 3. Klicke einen Button an, um das Diagramm zu aktualisieren</p>';
+
+                return guide;
+            };
+
+            guide.addTo(map);
+        }
+
+        // Diagramme erstellen: die funktionen werden mit den buttons verlinkt
+        var horBarChart;
+
+        function displayHorBarChart() {
+
+            var x_labels = [];
+            var y_data = [];
+
+            $('#horBarChart').remove();
+            $('.info').append('<canvas id="horBarChart"></canvas>');
+
+            $.ajax({
+                url: "/top10_ref2011",
+                cache: "false",
+                dataType: "text",
+                data: "GET",
+
+                success: function(data) {
+                    var obj = JSON.parse(data);
+
+                    obj.forEach(o => {
+                        x_labels.push(o.land);
+                    });
+
+                    var label_array = Object.values(x_labels);
+
+                    obj.forEach(o => {
+                        y_data.push(o.refTotal);
+                    });
+
+                    var data_array = Object.values(y_data);
+
+                    var ctx = document.getElementById("horBarChart").getContext("2d");
+                    var canvas = document.getElementById("horBarChart");
+                    var parent = document.getElementById("info");
+
+
+                horBarChart = new Chart(ctx, {
+                    type: 'horizontalBar',
+                    data: {
+                        labels: label_array,
+                        datasets: [{
+                            label: 'Fluechtlingszahl',
+                            backgroundColor: "rgba(0, 128, 128, 0.9)",
+                            borderColor: "rgba(0, 128, 128, 0.9)",
+                            data: data_array
+                        }]
+                    },
+
+                    options: {
+                        legend: {
+                             labels: {
+                                  fontColor: 'white'
+                             }
+                        },
+                        scaleShowValues: true,
+                        scales: {
+                            yAxes: [{
+                                ticks: {
+                                    fontColor: "white",
+                                    beginAtZero: true,
+                                }
+                            }],
+                            xAxes: [{
+                                ticks: {
+                                    fontColor: "white",
+                                    autoSkip: false,
+                                    beginAtZero: true,
+
+                                }
+                            }]
+                        }
+                    }
+                });
+                horBarChart.update();
+            },
+                error: function(data) {
+                    alert('error; '+ eval(error));
+                }
+            });
+        }
+
+        function displayHorBarChart1() {
+
+            var x_labels = [];
+            var y_data = [];
+
+
+            $('#horBarChart').remove();
+            $('.info').append('<canvas id="horBarChart"></canvas>');
+
+
+            $.ajax({
+                url: "/top10_ref2012",
+                cache: "false",
+                dataType: "text",
+                data: "GET",
+
+                success: function(data) {
+                    var obj = JSON.parse(data);
+
+                    obj.forEach(o => {
+                        x_labels.push(o.land);
+                    });
+
+                    var label_array = Object.values(x_labels);
+
+                    obj.forEach(o => {
+                        y_data.push(o.refTotal);
+                    });
+
+                    var data_array = Object.values(y_data);
+
+                    var ctx = document.getElementById("horBarChart").getContext("2d");
+                    var canvas = document.getElementById("horBarChart");
+                    var parent = document.getElementById("info");
+
+                    horBarChart = new Chart(ctx, {
+                        type: 'horizontalBar',
+                        data: {
+                            labels: label_array,
+                            datasets: [{
+                                label: 'Fluechtlingszahl',
+                                backgroundColor: "rgba(0, 128, 128, 0.9)",
+                                borderColor: "rgba(0, 128, 128, 0.9)",
+                                data: data_array
+                            }]
+                        },
+
+                        options: {
+                            legend: {
+                                 labels: {
+                                      fontColor: 'white'
+                                 }
+                            },
+                            scaleShowValues: true,
+                            scales: {
+                                yAxes: [{
+                                    ticks: {
+                                        fontColor: "white",
+                                        beginAtZero: true,
+                                    }
+                                }],
+                                xAxes: [{
+                                    ticks: {
+                                        fontColor: "white",
+                                        autoSkip: false,
+                                        beginAtZero: true,
+
+                                    }
+                                }]
+                            }
+                        }
+                    });
+                    horBarChart.update();
+                },
+
+                error: function(data) {
+                    alert('error; '+ eval(error));
+                }
+            });
+        }
+
+        function displayHorBarChart2() {
+
+            var x_labels = [];
+            var y_data = [];
+
+            $('#horBarChart').remove();
+            $('.info').append('<canvas id="horBarChart"></canvas>');
+
+            $.ajax({
+                url: "/top10_ref2013",
+                cache: "false",
+                dataType: "text",
+                data: "GET",
+
+                success: function(data) {
+                    var obj = JSON.parse(data);
+
+                    obj.forEach(o => {
+                        x_labels.push(o.land);
+                    });
+
+                    var label_array = Object.values(x_labels);
+
+                    obj.forEach(o => {
+                        y_data.push(o.refTotal);
+                    });
+
+                    var data_array = Object.values(y_data);
+
+                    var ctx = document.getElementById("horBarChart").getContext("2d");
+                    var canvas = document.getElementById("horBarChart");
+                    var parent = document.getElementById("info");
+
+                    var horBarChart = new Chart(ctx, {
+                        type: 'horizontalBar',
+                        data: {
+                            labels: label_array,
+                            datasets: [{
+                                label: 'Fluechtlingszahl',
+                                backgroundColor: "rgba(0, 128, 128, 0.9)",
+                                borderColor: "rgba(0, 128, 128, 0.9)",
+                                data: data_array
+                            }]
+                        },
+
+                        options: {
+                            legend: {
+                                 labels: {
+                                      fontColor: 'white'
+                                 }
+                            },
+                            scaleShowValues: true,
+                            scales: {
+                                yAxes: [{
+                                    ticks: {
+                                        fontColor: "white",
+                                        beginAtZero: true,
+                                    }
+                                }],
+                                xAxes: [{
+                                    ticks: {
+                                        fontColor: "white",
+                                        autoSkip: false,
+                                        beginAtZero: true,
+
+                                    }
+                                }]
+                            }
+                        }
+                    });
+                    horBarChart.update();
+                },
+
+                error: function(data) {
+                    alert('error; '+ eval(error));
+                }
+            });
+        }
+
+        function displayHorBarChart3() {
+
+            var x_labels = [];
+            var y_data = [];
+
+            $('#horBarChart').remove();
+            $('.info').append('<canvas id="horBarChart"></canvas>');
+
+            $.ajax({
+                url: "/top10_ref2014",
+                cache: "false",
+                dataType: "text",
+                data: "GET",
+
+                success: function(data) {
+                    var obj = JSON.parse(data);
+
+                    obj.forEach(o => {
+                        x_labels.push(o.land);
+                    });
+
+                    var label_array = Object.values(x_labels);
+
+                    obj.forEach(o => {
+                        y_data.push(o.refTotal);
+                    });
+
+                    var data_array = Object.values(y_data);
+
+                    var ctx = document.getElementById("horBarChart").getContext("2d");
+                    var canvas = document.getElementById("horBarChart");
+                    var parent = document.getElementById("info");
+
+                    var horBarChart = new Chart(ctx, {
+                        type: 'horizontalBar',
+                        data: {
+                            labels: label_array,
+                            datasets: [{
+                                label: 'Fluechtlingszahl',
+                                backgroundColor: "rgba(0, 128, 128, 0.9)",
+                                borderColor: "rgba(0, 128, 128, 0.9)",
+                                data: data_array
+                            }]
+                        },
+
+                        options: {
+                            legend: {
+                                 labels: {
+                                      fontColor: 'white'
+                                 }
+                            },
+                            scaleShowValues: true,
+                            scales: {
+                                yAxes: [{
+                                    ticks: {
+                                        fontColor: "white",
+                                        beginAtZero: true,
+                                    }
+                                }],
+                                xAxes: [{
+                                    ticks: {
+                                        fontColor: "white",
+                                        autoSkip: false,
+                                        beginAtZero: true,
+
+                                    }
+                                }]
+                            }
+                        }
+                    });
+                    horBarChart.update();
+                },
+
+                error: function(data) {
+                    alert('error; '+ eval(error));
+                }
+            });
+        }
+
+        function displayHorBarChart4() {
+
+            var x_labels = [];
+            var y_data = [];
+
+            $('#horBarChart').remove();
+            $('.info').append('<canvas id="horBarChart"></canvas>');
+
+            $.ajax({
+                url: "/top10_ref2015",
+                cache: "false",
+                dataType: "text",
+                data: "GET",
+
+                success: function(data) {
+                    var obj = JSON.parse(data);
+
+                    obj.forEach(o => {
+                        x_labels.push(o.land);
+                    });
+
+                    var label_array = Object.values(x_labels);
+
+                    obj.forEach(o => {
+                        y_data.push(o.refTotal);
+                    });
+
+                    var data_array = Object.values(y_data);
+
+                    var ctx = document.getElementById("horBarChart").getContext("2d");
+                    var canvas = document.getElementById("horBarChart");
+                    var parent = document.getElementById("info");
+
+                    var horBarChart = new Chart(ctx, {
+                        type: 'horizontalBar',
+                        data: {
+                            labels: label_array,
+                            datasets: [{
+                                label: 'Fluechtlingszahl',
+                                backgroundColor: "rgba(0, 128, 128, 0.9)",
+                                borderColor: "rgba(0, 128, 128, 0.9)",
+                                data: data_array
+                            }]
+                        },
+
+                        options: {
+                            legend: {
+                                 labels: {
+                                      fontColor: 'white'
+                                 }
+                            },
+                            scaleShowValues: true,
+                            scales: {
+                                yAxes: [{
+                                    ticks: {
+                                        fontColor: "white",
+                                        beginAtZero: true,
+                                    }
+                                }],
+                                xAxes: [{
+                                    ticks: {
+                                        fontColor: "white",
+                                        autoSkip: false,
+                                        beginAtZero: true,
+
+                                    }
+                                }]
+                            }
+                        }
+                    });
+                horBarChart.update();
+                },
+
+                error: function(data) {
+                    alert('error; '+ eval(error));
+                }
+            });
+        }
+
+        function displayHorBarChart5() {
+
+            var x_labels = [];
+            var y_data = [];
+
+            $('#horBarChart').remove();
+            $('.info').append('<canvas id="horBarChart"></canvas>');
+
+            $.ajax({
+                url: "/top10_ref2016",
+                cache: "false",
+                dataType: "text",
+                data: "GET",
+
+                success: function(data) {
+                    var obj = JSON.parse(data);
+
+                    obj.forEach(o => {
+                        x_labels.push(o.land);
+                    });
+
+                    var label_array = Object.values(x_labels);
+
+                    obj.forEach(o => {
+                        y_data.push(o.refTotal);
+                    });
+
+                    var data_array = Object.values(y_data);
+
+                    var ctx = document.getElementById("horBarChart").getContext("2d");
+                    var canvas = document.getElementById("horBarChart");
+                    var parent = document.getElementById("info");
+
+                    var horBarChart = new Chart(ctx, {
+                        type: 'horizontalBar',
+                        data: {
+                            labels: label_array,
+                            datasets: [{
+                                label: 'Fluechtlingszahl',
+                                backgroundColor: "rgba(0, 128, 128, 0.9)",
+                                borderColor: "rgba(0, 128, 128, 0.9)",
+                                data: data_array
+                            }]
+                        },
+
+                        options: {
+                            legend: {
+                                 labels: {
+                                      fontColor: 'white'
+                                 }
+                            },
+                            scaleShowValues: true,
+                            scales: {
+                                yAxes: [{
+                                    ticks: {
+                                        fontColor: "white",
+                                        beginAtZero: true,
+                                    }
+                                }],
+                                xAxes: [{
+                                    ticks: {
+                                        fontColor: "white",
+                                        autoSkip: false,
+                                        beginAtZero: true,
+
+                                    }
+                                }]
+                            }
+                        }
+                    });
+                    horBarChart.update();
+                },
+
+                error: function(data) {
+                    alert('error; '+ eval(error));
+                }
+            });
+        }
+
+        function displayHorBarChart6() {
+
+            var x_labels = [];
+            var y_data = [];
+
+            $('#horBarChart').remove();
+            $('.info').append('<canvas id="horBarChart"></canvas>');
+
+            $.ajax({
+                url: "/top10_ref2017",
+                cache: "false",
+                dataType: "text",
+                data: "GET",
+
+                success: function(data) {
+                    var obj = JSON.parse(data);
+
+                    obj.forEach(o => {
+                        x_labels.push(o.land);
+                    });
+
+                    var label_array = Object.values(x_labels);
+
+                    obj.forEach(o => {
+                        y_data.push(o.refTotal);
+                    });
+
+                    var data_array = Object.values(y_data);
+
+                    var ctx = document.getElementById("horBarChart").getContext("2d");
+                    var canvas = document.getElementById("horBarChart");
+                    var parent = document.getElementById("info");
+
+                    var horBarChart = new Chart(ctx, {
+                        type: 'horizontalBar',
+                        data: {
+                            labels: label_array,
+                            datasets: [{
+                                label: 'Fluechtlingszahl',
+                                backgroundColor: "rgba(0, 128, 128, 0.9)",
+                                borderColor: "rgba(0, 128, 128, 0.9)",
+                                data: data_array
+                            }]
+                        },
+
+                        options: {
+                            legend: {
+                                 labels: {
+                                      fontColor: 'white'
+                                 }
+                            },
+                            scaleShowValues: true,
+                            scales: {
+                                yAxes: [{
+                                    ticks: {
+                                        fontColor: "white",
+                                        beginAtZero: true,
+                                    }
+                                }],
+                                xAxes: [{
+                                    ticks: {
+                                        fontColor: "white",
+                                        autoSkip: false,
+                                        beginAtZero: true,
+
+                                    }
+                                }]
+                            }
+                        }
+                    });
+                    horBarChart.update();
+                },
+
+                error: function(data) {
+                    alert('error; '+ eval(error));
+                }
+            });
+        }
+
+        function displayHorBarChart7() {
+
+            var x_labels = [];
+            var y_data = [];
+
+            $('#horBarChart').remove();
+            $('.info').append('<canvas id="horBarChart"></canvas>');
+
+            $.ajax({
+                url: "/top10_ref2018",
+                cache: "false",
+                dataType: "text",
+                data: "GET",
+
+                success: function(data) {
+                    var obj = JSON.parse(data);
+
+                    obj.forEach(o => {
+                        x_labels.push(o.land);
+                    });
+
+                    var label_array = Object.values(x_labels);
+
+                    obj.forEach(o => {
+                        y_data.push(o.refTotal);
+                    });
+
+                    var data_array = Object.values(y_data);
+
+                    var ctx = document.getElementById("horBarChart").getContext("2d");
+                    var canvas = document.getElementById("horBarChart");
+                    var parent = document.getElementById("info");
+
+                    var horBarChart = new Chart(ctx, {
+                        type: 'horizontalBar',
+                        data: {
+                            labels: label_array,
+                            datasets: [{
+                                label: 'Fluechtlingszahl',
+                                backgroundColor: "rgba(0, 128, 128, 0.9)",
+                                borderColor: "rgba(0, 128, 128, 0.9)",
+                                data: data_array
+                            }]
+                        },
+
+                        options: {
+                            legend: {
+                                 labels: {
+                                      fontColor: 'white'
+                                 }
+                            },
+                            scaleShowValues: true,
+                            scales: {
+                                yAxes: [{
+                                    ticks: {
+                                        fontColor: "white",
+                                        beginAtZero: true,
+                                    }
+                                }],
+                                xAxes: [{
+                                    ticks: {
+                                        fontColor: "white",
+                                        autoSkip: false,
+                                        beginAtZero: true,
+
+                                    }
+                                }]
+                            }
+                        }
+                    });
+                    horBarChart.update();
+                },
+
+                error: function(data) {
+                    alert('error; '+ eval(error));
+                }
+            });
+        }
+
+    </script>
+
+
+</body>
+
+</html>
