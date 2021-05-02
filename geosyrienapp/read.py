@@ -7,6 +7,12 @@ from pandas import ExcelFile
 from geosyrienapp.models import * # Refugees2011, Refugees2012 etc.
 from django.apps import apps
 
+"""
+this file will read the provided excel data sheet and populate
+its content to the models
+"""
+
+
 # read excel dataset
 data = pd.ExcelFile('/Users/hoangvutuyen/Documents/python_scripts/geoprojekt/geoprojekt_syrien/dataset.xlsx')
 
