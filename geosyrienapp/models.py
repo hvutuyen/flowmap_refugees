@@ -29,8 +29,9 @@ class RefugeesParent(models.Model):
     def __str__(self):
         return self.land
 
+
     class Meta:
-        abstract = True
+        abstract = True # makes parent class abstract, so there will be no tables created for parent class
 
 # create child classes by inherenting attributes from parent class
 
