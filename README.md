@@ -7,5 +7,8 @@ Charts.js was used to create the barchart on the topright of the map.
 Todos:
 - reset data view
 
+![alt text](https://github.com/hvutuyen/flowmap_refugees/blob/main/2020_Geoprojekt_Streifen3m.gif?raw=true
+ "gif")
+
 Have a look at the Map:
 [(https://flowmap.herokuapp.com/)](https://flowmap.herokuapp.com/)
